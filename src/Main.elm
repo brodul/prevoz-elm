@@ -6,11 +6,18 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import Json.Decode.Pipeline exposing (hardcoded, optional, required)
+import Task
+import Time
 import Url.Builder as Url
 
 
 main =
-    Browser.element { init = init, update = update, subscriptions = subscriptions, view = view }
+    Browser.element
+        { init = init
+        , update = update
+        , subscriptions = subscriptions
+        , view = view
+        }
 
 
 
@@ -23,6 +30,7 @@ type alias Carshare =
     , from : String
     , date : String
     , time : String
+    , price : Int
     }
 
 
@@ -31,12 +39,14 @@ type alias Carshares =
 
 
 type alias Model =
-    Carshares
+    { carshares : Carshares
+    , date : Time.Posix
+    }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( [], getCarshares )
+    ( Model [] (Time.millisToPosix 0), Cmd.none )
 
 
 
@@ -45,6 +55,7 @@ init _ =
 
 type Msg
     = ListCarshares (Result Http.Error Carshares)
+    | Tick Time.Posix
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -53,7 +64,7 @@ update msg model =
         ListCarshares result ->
             case result of
                 Ok carshares ->
-                    ( carshares, Cmd.none )
+                    ( { model | carshares = carshares }, Cmd.none )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -70,7 +81,7 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    div [] (List.map text (List.map .to model)) 
+    div [] (List.map text (List.map .to model.carshares))
 
 
 carshareDecoder : Decoder Carshare
@@ -81,6 +92,7 @@ carshareDecoder =
         |> required "from" string
         |> required "date" string
         |> required "time" string
+        |> required "price" int
 
 
 carsharesDecoder : Decoder Carshares
@@ -88,18 +100,22 @@ carsharesDecoder =
     list carshareDecoder
 
 
-prevozUrl : String
-prevozUrl =
+prevozUrl : Time.Posix -> String
+prevozUrl date =
+    let
+        dateString =
+            date
+    in
     Url.crossOrigin "http://cors-anywhere.herokuapp.com/https://prevoz.org/api/search/shares/"
         []
         [ Url.string "fc" "SI"
         , Url.string "tc" "SI"
-        , Url.string "d" "2018-09-25"
+        , Url.string "d" "2018-09-31"
         , Url.string "exact" "false"
         , Url.string "intl" "false"
         ]
 
 
-getCarshares : Cmd Msg
-getCarshares =
-    Http.send ListCarshares (Http.get prevozUrl (field "carshare_list" carsharesDecoder))
+getCarshares : Model -> Cmd Msg
+getCarshares model =
+    Http.send ListCarshares (Http.get (prevozUrl model.date) (field "carshare_list" carsharesDecoder))
